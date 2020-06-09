@@ -28,7 +28,7 @@ namespace DbUp.Builder
             defaultLog = new TraceUpgradeLog();
 #endif
             VariablesEnabled = true;
-            Hasher = new Hasher();
+            Hasher = new Sha256Hasher();
         }
 
         /// <summary>

@@ -386,11 +386,6 @@ namespace DbUp.Helpers
         public object ExecuteScalar(string query, params System.Linq.Expressions.Expression<System.Func<string, object>>[] parameters) { }
         public DbUp.Helpers.AdHocSqlRunner WithVariable(string variableName, string value) { }
     }
-    public class Hasher : DbUp.Helpers.IHasher
-    {
-        public Hasher() { }
-        public string GetHash(string input) { }
-    }
     public interface IHasher
     {
         string GetHash(string input);
@@ -401,6 +396,11 @@ namespace DbUp.Helpers
         public void EnsureTableExistsAndIsLatestVersion(System.Func<System.Data.IDbCommand> dbCommandFactory) { }
         public System.Collections.Generic.IEnumerable<DbUp.Engine.ExecutedSqlScript> GetExecutedScripts() { }
         public void StoreExecutedScript(DbUp.Engine.SqlScript script, System.Func<System.Data.IDbCommand> dbCommandFactory) { }
+    }
+    public class Sha256Hasher : DbUp.Helpers.IHasher
+    {
+        public Sha256Hasher() { }
+        public string GetHash(string input) { }
     }
     public static class UpgradeEngineHtmlReport
     {

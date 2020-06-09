@@ -7,7 +7,7 @@ namespace DbUp.Helpers
     /// <summary>
     /// String hasher
     /// </summary> 
-    public class Hasher : IHasher
+    public class Sha256Hasher : IHasher
     {
         /// <summary>
         /// Returns hash of input
