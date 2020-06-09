@@ -8,7 +8,7 @@ using DbUp.Support;
 namespace DbUp.SqlServer
 {
     /// <summary>
-    /// An implementation of the <see cref="Engine.IJournal"/> interface which tracks version numbers for a 
+    /// An implementation of the <see cref="Engine.IJournal"/> interface which tracks version numbers for a
     /// SQL Server database using a table called dbo.SchemaVersions.
     /// </summary>
     public class SqlTableJournal : TableJournal
@@ -18,6 +18,7 @@ namespace DbUp.SqlServer
         /// </summary>
         /// <param name="connectionManager">The connection manager.</param>
         /// <param name="logger">The log.</param>
+        /// <param name="hasher">The hasher used to calculate the contents of the Hash column.</param>
         /// <param name="schema">The schema that contains the table.</param>
         /// <param name="table">The table name.</param>
         /// <example>
