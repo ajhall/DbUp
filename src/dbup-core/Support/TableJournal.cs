@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using DbUp.Engine;
 using DbUp.Engine.Output;
 using DbUp.Engine.Transactions;
+using DbUp.Helpers;
 
 // ReSharper disable MemberCanBePrivate.Global
 namespace DbUp.Support
@@ -22,12 +24,14 @@ namespace DbUp.Support
         /// <param name="connectionManager">The connection manager.</param>
         /// <param name="logger">The log.</param>
         /// <param name="sqlObjectParser"></param>
+        /// <param name="hasher">Script content hasher</param>
         /// <param name="schema">The schema that contains the table.</param>
         /// <param name="table">The table name.</param>
         protected TableJournal(
             Func<IConnectionManager> connectionManager,
             Func<IUpgradeLog> logger,
             ISqlObjectParser sqlObjectParser,
+            Func<IHasher> hasher,
             string schema, string table)
         {
             this.sqlObjectParser = sqlObjectParser;
@@ -38,6 +42,8 @@ namespace DbUp.Support
             FqSchemaTableName = string.IsNullOrEmpty(schema)
                 ? sqlObjectParser.QuoteIdentifier(table)
                 : sqlObjectParser.QuoteIdentifier(schema) + "." + sqlObjectParser.QuoteIdentifier(table);
+
+            Hasher = hasher;
         }
 
         protected string SchemaTableSchema { get; private set; }
@@ -54,9 +60,11 @@ namespace DbUp.Support
 
         protected Func<IConnectionManager> ConnectionManager { get; private set; }
 
+        protected Func<IHasher> Hasher { get; private set; }
+
         protected Func<IUpgradeLog> Log { get; private set; }
 
-        public string[] GetExecutedScripts()
+        public IEnumerable<ExecutedSqlScript> GetExecutedScripts()
         {
             return ConnectionManager().ExecuteCommandsWithManagedConnection(dbCommandFactory =>
             {
@@ -64,23 +72,30 @@ namespace DbUp.Support
                 {
                     Log().WriteInformation("Fetching list of already executed scripts.");
 
-                    var scripts = new List<string>();
+                    var scripts = new List<ExecutedSqlScript>();
 
                     using (var command = GetJournalEntriesCommand(dbCommandFactory))
                     {
                         using (var reader = command.ExecuteReader())
                         {
                             while (reader.Read())
-                                scripts.Add((string)reader[0]);
+                            {
+                                scripts.Add(new ExecutedSqlScript
+                                {
+                                    Name = reader["ScriptName"].ToString(),
+                                    Hash = (reader["Hash"] == DBNull.Value) ? null : reader["Hash"].ToString()
+                                });
+
+                            }
                         }
                     }
 
-                    return scripts.ToArray();
+                    return scripts;
                 }
                 else
                 {
                     Log().WriteInformation("Journal table does not exist");
-                    return new string[0];
+                    return Enumerable.Empty<ExecutedSqlScript>();
                 }
             });
         }
@@ -93,6 +108,15 @@ namespace DbUp.Support
         public virtual void StoreExecutedScript(SqlScript script, Func<IDbCommand> dbCommandFactory)
         {
             EnsureTableExistsAndIsLatestVersion(dbCommandFactory);
+
+            // TODO: Alter table for redeployable script support
+            //using (var command = GetCreateHashColumnCommand(dbCommandFactory))
+            //{
+            //    command.ExecuteNonQuery();
+
+            //    Log().WriteInformation($"Redeployable script support has been added to {FqSchemaTableName} table");
+            //}
+
             using (var command = GetInsertScriptCommand(dbCommandFactory, script))
             {
                 command.ExecuteNonQuery();
@@ -113,7 +137,21 @@ namespace DbUp.Support
             appliedParam.Value = DateTime.Now;
             command.Parameters.Add(appliedParam);
 
-            command.CommandText = GetInsertJournalEntrySql("@scriptName", "@applied");
+            var hashParam = command.CreateParameter();
+            hashParam.ParameterName = "hash";
+
+            if (script.SqlScriptOptions.ScriptType == ScriptType.RunOnChange)
+            {
+                hashParam.Value = Hasher().GetHash(script.Contents);
+            }
+            else
+            {
+                hashParam.Value = DBNull.Value;
+            }
+
+            command.Parameters.Add(hashParam);
+
+            command.CommandText = GetInsertJournalEntrySql("@scriptName", "@applied", "@hash", script);
             command.CommandType = CommandType.Text;
             return command;
         }
@@ -121,6 +159,7 @@ namespace DbUp.Support
         protected IDbCommand GetJournalEntriesCommand(Func<IDbCommand> dbCommandFactory)
         {
             var command = dbCommandFactory();
+
             command.CommandText = GetJournalEntriesSql();
             command.CommandType = CommandType.Text;
             return command;
@@ -141,7 +180,7 @@ namespace DbUp.Support
         /// <param name="scriptName">Name of the script name param (i.e @scriptName)</param>
         /// <param name="applied">Name of the applied param (i.e @applied)</param>
         /// <returns></returns>
-        protected abstract string GetInsertJournalEntrySql(string @scriptName, string @applied);
+        protected abstract string GetInsertJournalEntrySql(string @scriptName, string @applied, string @hash, SqlScript script);
 
         /// <summary>
         /// Sql for getting the journal entries
